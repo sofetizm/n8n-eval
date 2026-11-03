@@ -1,0 +1,22 @@
+name: bookstore-support
+target:
+  webhook: ${N8N_URL:-http://localhost:5678}/webhook/bookstore-support
+  input_field: message
+  output_path: output
+n8n:
+  url: ${N8N_URL:-http://localhost:5678}
+  api_key: ${N8N_API_KEY}
+  workflow: bookstore-support
+judge:
+  base_url: ${JUDGE_BASE_URL:-https://api.groq.com/openai/v1}
+  model: ${JUDGE_MODEL:-openai/gpt-oss-120b}
+  api_key: ${JUDGE_API_KEY:-${LLM_API_KEY}}
+cases: cases.jsonl
+repeats: 3
+concurrency: 2
+gate:
+  min_pass_rate: 0.85
+  min_checks:
+    tools: 0.9
+  max_regression: 0.05
+  fail_on_significant_drop: true
