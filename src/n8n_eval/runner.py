@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from collections.abc import Callable
@@ -51,6 +52,25 @@ def cost(trace: Trace | None, prices: dict[str, Any]) -> float | None:
         return None
     per_in, per_out = table[model]
     return (trace.prompt_tokens * per_in + trace.completion_tokens * per_out) / 1_000_000
+
+
+_WAIT = re.compile(r"try again in\s*((?:\d+h)?(?:\d+m(?!s))?(?:[\d.]+s)?(?:[\d.]+ms)?)", re.I)
+
+
+def is_rate_limit(error: str) -> bool:
+    lowered = error.lower()
+    return "rate limit" in lowered or "rate_limit" in lowered or "429" in lowered
+
+
+def retry_after(error: str) -> float | None:
+    """Seconds from messages like 'Please try again in 1m2.5s' (Groq, OpenAI); 20 s if no hint is given."""
+    match = _WAIT.search(error)
+    if not match or not match.group(1):
+        return 20.0
+    total = 0.0
+    for value, unit in re.findall(r"([\d.]+)(h|ms|m|s)", match.group(1)):
+        total += float(value) * {"h": 3600, "m": 60, "s": 1, "ms": 0.001}[unit]
+    return total
 
 
 def load_rows(path: Path) -> list[dict[str, Any]]:
@@ -111,7 +131,22 @@ class Runner:
                 return response
             await asyncio.sleep(1)
 
-    async def run_one(self, case: Case, repeat: int) -> dict[str, Any]:
+    async def run_one(self, case: Case, repeat: int, max_wait: float = 120.0, attempts: int = 30) -> dict[str, Any]:
+        """One run; when the LLM behind n8n hits a per-minute rate limit, waits as the provider asks and retries.
+        A long wait (a daily limit) is returned as an error, which stops the run so it can be resumed later."""
+        for _ in range(attempts):
+            row = await self._attempt(case, repeat)
+            error = row.get("error", "")
+            if not is_rate_limit(error):
+                return row
+            wait = retry_after(error)
+            if wait is None or wait > max_wait:
+                row["error"] = "rate limit: " + error
+                return row
+            await asyncio.sleep(wait + 1)
+        return row
+
+    async def _attempt(self, case: Case, repeat: int) -> dict[str, Any]:
         marker = f"{self.label}:{case.id}:{repeat}:{uuid.uuid4().hex[:8]}"
         started_after = datetime.now(timezone.utc) - timedelta(seconds=2)
         row: dict[str, Any] = {

@@ -19,7 +19,7 @@ from n8n_eval.runner import load_rows  # noqa: E402
 VARIANTS = [
     ("gpt-oss-120b", "gpt-oss-120b, полный промпт"),
     ("gpt-oss-20b", "gpt-oss-20b, полный промпт"),
-    ("short-prompt", "gpt-oss-120b, короткий промпт"),
+    ("short-prompt", "gpt-oss-20b, короткий промпт"),
 ]
 TAGS = [("orders", "заказы"), ("policy", "правила"), ("mixed", "заказ + правила"), ("safety", "границы и безопасность")]
 SURFACE, TEXT, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e6e5e0"
@@ -126,10 +126,10 @@ def main(results_dir: str) -> None:
     lines.append("")
 
     comparisons = {}
-    for cand in ("gpt-oss-20b", "short-prompt"):
-        if "gpt-oss-120b" in rows and cand in rows:
-            text, result = compare_markdown(rows["gpt-oss-120b"], rows[cand])
-            comparisons[cand] = result
+    for base, cand in (("gpt-oss-120b", "gpt-oss-20b"), ("gpt-oss-20b", "short-prompt")):
+        if base in rows and cand in rows:
+            text, result = compare_markdown(rows[base], rows[cand])
+            comparisons[f"{cand} vs {base}"] = result
             lines += [text, ""]
 
     if "gpt-oss-120b" in rows:

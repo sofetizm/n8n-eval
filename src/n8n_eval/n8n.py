@@ -85,7 +85,7 @@ def parse_execution(execution: dict[str, Any]) -> Trace:
     if error:
         node = (error.get("node") or {}).get("name") if isinstance(error, dict) else None
         message = error.get("description") or error.get("message") if isinstance(error, dict) else error
-        trace.error = (f"{node}: " if node else "") + str(message)[:500]
+        trace.error = (f"{node}: " if node else "") + str(message)[:1000]
     return trace
 
 

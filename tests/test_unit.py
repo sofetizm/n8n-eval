@@ -224,7 +224,7 @@ def test_runner_retries_errors_and_stops_on_error_streak(tmp_path):
     def handler(request):
         state["calls"] += 1
         if state["fail"]:
-            return httpx.Response(500, json={"message": "Rate limit reached"})
+            return httpx.Response(500, json={"message": "Service unavailable"})
         return httpx.Response(200, json={"output": "ok"})
 
     def make():
@@ -233,7 +233,7 @@ def test_runner_retries_errors_and_stops_on_error_streak(tmp_path):
 
     from n8n_eval.runner import TooManyErrors
 
-    with pytest.raises(TooManyErrors, match="Rate limit"):
+    with pytest.raises(TooManyErrors, match="Service unavailable"):
         asyncio.run(make().run(suite.cases, 1, 1))
     assert state["calls"] == 3
     state["fail"] = False
@@ -254,3 +254,43 @@ def test_parse_real_execution():
     assert trace.models == ["openai/gpt-oss-120b"] and trace.prompt_tokens > 0 and trace.completion_tokens > 0
     assert set(trace.node_ms) >= {"Webhook", "Support agent", "Chat model", "get_order", "Respond"}
     assert cost(trace, {}) > 0 and cost(trace, {"openai/gpt-oss-120b": [0, 0]}) == 0
+
+
+def test_retry_after_parsing():
+    from n8n_eval.runner import is_rate_limit, retry_after
+
+    msg = "Rate limit reached for model `openai/gpt-oss-120b` on tokens per minute (TPM): Limit 8000. Please try again in 7.66s."
+    assert is_rate_limit(msg) and retry_after(msg) == pytest.approx(7.66)
+    assert retry_after("Please try again in 1m2.5s") == pytest.approx(62.5)
+    assert retry_after("tokens per day (TPD). Please try again in 2h3m") == pytest.approx(7380)
+    assert retry_after("try again in 350ms") == pytest.approx(0.35)
+    assert retry_after("Rate limit reached") == 20.0
+    assert not is_rate_limit("HTTP 500: Error in workflow")
+
+
+def test_runner_waits_on_minute_rate_limit(tmp_path, monkeypatch):
+    (tmp_path / "s.yaml").write_text(
+        "name: s\ntarget: {webhook: http://n8n/webhook/x}\ncases:\n  - {id: a, input: q, expect: {contains: ok}}\n"
+    )
+    suite = load_suite(tmp_path / "s.yaml")
+    calls = {"n": 0}
+    sleeps = []
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("n8n_eval.runner.asyncio.sleep", fake_sleep)
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            return httpx.Response(500, json={"message": "Rate limit reached ... Please try again in 3.5s"})
+        return httpx.Response(200, json={"output": "ok"})
+
+    runner = Runner(suite, "main", tmp_path / "r.jsonl", http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    (row,) = asyncio.run(runner.run(suite.cases, 1, 1))
+    assert row["passed"] and calls["n"] == 3 and sleeps == [4.5, 4.5]
+
+    calls["n"] = -100
+    row = asyncio.run(runner.run_one(suite.cases[0], 1, max_wait=1))
+    assert row["error"].startswith("rate limit:")
