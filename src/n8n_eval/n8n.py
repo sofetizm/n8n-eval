@@ -83,7 +83,9 @@ def parse_execution(execution: dict[str, Any]) -> Trace:
                 trace.completion_tokens += c
     error = result.get("error")
     if error:
-        trace.error = str(error.get("message") or error)[:500]
+        node = (error.get("node") or {}).get("name") if isinstance(error, dict) else None
+        message = error.get("description") or error.get("message") if isinstance(error, dict) else error
+        trace.error = (f"{node}: " if node else "") + str(message)[:500]
     return trace
 
 

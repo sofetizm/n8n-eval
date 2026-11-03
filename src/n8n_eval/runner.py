@@ -139,8 +139,11 @@ class Runner:
         except httpx.HTTPError as error:
             row.update(latency_ms=round((time.perf_counter() - t0) * 1000, 1), output="", error=repr(error)[:300])
 
-        trace = await self.n8n.find_execution(marker, started_after) if self.n8n and "error" not in row else None
+        reached_n8n = "error" not in row or row.get("status_code", 0) >= 500
+        trace = await self.n8n.find_execution(marker, started_after) if self.n8n and reached_n8n else None
         row["trace"] = trace.to_dict() if trace else None
+        if "error" in row and trace and trace.error and trace.execution_id:
+            row["error"] += f" | n8n: {trace.error}"
         row["cost_usd"] = cost(trace, self.suite.prices)
 
         checks: list[CheckResult] = []

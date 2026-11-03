@@ -19,7 +19,7 @@ from n8n_eval.report import summarize
 from n8n_eval.runner import Runner
 
 URL = os.environ.get("N8N_TEST_URL")
-MOCK = os.environ.get("MOCK_LLM_URL", "http://localhost:8100/v1")
+MOCK = os.environ.get("MOCK_LLM_URL", "http://127.0.0.1:8100/v1")
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "bookstore"
 pytestmark = pytest.mark.skipif(not URL, reason="N8N_TEST_URL is not set")
 
