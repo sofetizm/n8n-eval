@@ -1,8 +1,8 @@
 name: Experiment
 
 # Runs the demo agent in three versions against a real LLM and builds the report.
-# Needs the GROQ_API_KEY secret. If the LLM rate limit stops it, use "Re-run jobs":
-# finished runs are restored from the cache and only the rest is sent again.
+# Needs the GROQ_API_KEY secret. If a daily LLM limit stops it, run it again later:
+# finished runs are restored from the cache (also from the previous run) and only the rest is sent.
 on:
   workflow_dispatch:
 
@@ -24,7 +24,9 @@ jobs:
         with:
           path: examples/bookstore/results
           key: experiment-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: experiment-${{ github.run_id }}-
+          restore-keys: |
+            experiment-${{ github.run_id }}-
+            experiment-
       - name: Start n8n
         run: |
           docker run -d --name n8n --network host -e N8N_SECURE_COOKIE=false -e N8N_LISTEN_ADDRESS=0.0.0.0 \

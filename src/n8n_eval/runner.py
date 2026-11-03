@@ -131,9 +131,9 @@ class Runner:
                 return response
             await asyncio.sleep(1)
 
-    async def run_one(self, case: Case, repeat: int, max_wait: float = 120.0, attempts: int = 30) -> dict[str, Any]:
+    async def run_one(self, case: Case, repeat: int, max_wait: float = 600.0, attempts: int = 30) -> dict[str, Any]:
         """One run; when the LLM behind n8n hits a per-minute rate limit, waits as the provider asks and retries.
-        A long wait (a daily limit) is returned as an error, which stops the run so it can be resumed later."""
+        A wait over max_wait (a daily limit) is returned as an error, which stops the run so it can be resumed later."""
         for _ in range(attempts):
             row = await self._attempt(case, repeat)
             error = row.get("error", "")

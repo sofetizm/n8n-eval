@@ -39,11 +39,12 @@ def parse(text: str) -> dict[str, Any]:
 
 
 class LLMJudge:
-    def __init__(self, config: Judge, client: httpx.AsyncClient | None = None, retries: int = 5):
+    def __init__(self, config: Judge, client: httpx.AsyncClient | None = None, retries: int = 8, max_wait: float = 600):
         if not config.api_key:
             raise JudgeError("judge.api_key is empty: set it in the suite or the environment")
         self.config = config
         self.retries = retries
+        self.max_wait = max_wait
         self.client = client or httpx.AsyncClient(timeout=120)
         self.tokens = {"prompt": 0, "completion": 0}
 
@@ -61,7 +62,7 @@ class LLMJudge:
             response = await self.client.post(url, json=body, headers=headers)
             if response.status_code in (429, 500, 502, 503) and attempt < self.retries:
                 wait = float(response.headers.get("retry-after") or 2**attempt)
-                if wait > 120:
+                if wait > self.max_wait:
                     raise JudgeError(f"judge rate limit: retry after {wait:.0f} s")
                 await asyncio.sleep(wait)
                 continue
